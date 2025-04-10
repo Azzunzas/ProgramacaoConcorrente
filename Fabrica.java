@@ -7,21 +7,21 @@ import java.util.concurrent.Semaphore;
 
 
 public class Fabrica {
-    //    BUFFER FIXO
+
     private static final int BUFFER_PECAS = 500;
     private static final int BUFFER_GARAGEM = 25;
-    //    BUFFER CIRCULAR
+
     private static final int BUFFER_PROD = 40;
     private static final int BUFFER_LOJA = 40;
-    //  GRUPO DE THREADS
+
     private static final int MESAS = 4;
-    //    THREADS
+
     private static final int FUNCIONARIOS = 5;
     private static final int LOJAS = 3;
     private static final int CLIENTES = 20;
 
     public static void main(String[] args) {
-//        inicializacao dos buffers
+
         FixedBuffer<Integer> bufferPecas = new FixedBuffer<>(BUFFER_PECAS);
         initializePecasBuffer(bufferPecas, BUFFER_PECAS);
 
@@ -29,13 +29,13 @@ public class Fabrica {
         CircularBuffer<Veiculo> bufferProd = new CircularBuffer<>(BUFFER_PROD);
         CircularBuffer<Veiculo> bufferLoja = new CircularBuffer<>(BUFFER_LOJA);
 
-//        criando uma pool de Threads
+
         ExecutorService executor = Executors.newFixedThreadPool((FUNCIONARIOS * MESAS) + LOJAS + CLIENTES);
 
-        for (int i = 0; i <  MESAS; i++) {
-            int mesa = i+1;
-            for (int j = 0; j< FUNCIONARIOS;j++) {
-                int idFuncionario = (i* FUNCIONARIOS) + j + 1;
+        for (int i = 1; i <=  MESAS; i++) {
+            int mesa = i;
+            for (int j = 1; j<= FUNCIONARIOS;j++) {
+                int idFuncionario = j;
                 executor.execute(new Funcionario(
                         bufferProd,
                         bufferPecas,
@@ -44,7 +44,6 @@ public class Fabrica {
                 ));
             }
         }
-        //    inicializacao das lojas
         for(int i = 0; i < LOJAS; i++){
             int idLoja = i +1;
             executor.execute(new Loja(
@@ -53,7 +52,6 @@ public class Fabrica {
                     bufferLoja
             ));
         }
-//        inicializando clientes
         for(int i= 0; i < CLIENTES;i++){
             int idCliente =i +1;
             executor.execute(new Cliente(
@@ -181,20 +179,15 @@ class Funcionario implements Runnable {
     public void run() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                // 1. Pegar peças (2 peças por veículo)
+
                 int peca1 = bufferPecas.remove();
                 int peca2 = bufferPecas.remove();
 
-                // 2. Produzir veículo
                 Veiculo veiculo = new Veiculo(idMesa, id, bufferProducao.size());
-                Thread.sleep(500); // Simula tempo de produção
+                Thread.sleep(500);
 
-                // 3. Colocar na esteira de produção
                 bufferProducao.produce(veiculo);
 
-//                System.out.printf("[FABRICA] Produção - ID: %d | Cor: %s | Tipo: %s | Mesa: %d | Funcionário: %d | Posição Esteira: %d%n",
-//                        veiculo.getIdCarro(), veiculo.getColor(), veiculo.getTypo(),
-//                        idMesa, id, bufferProducao.size());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -221,8 +214,6 @@ class Loja implements Runnable{
                 veiculo.setPosiLoja(estoqueLoja.size());
 
                 estoqueLoja.produce(veiculo);
-//                System.out.printf("[VENDA FABRICA] ID: %d | Loja: %d | Posição Loja: %d%n",
-//                        veiculo.getIdCarro(), idLoja, estoqueLoja.size());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -234,6 +225,7 @@ class Cliente implements Runnable{
     private final int id;
     private final FixedBuffer<Veiculo> garage;
     private final CircularBuffer<Veiculo> estoqueLoja;
+    private static final int TOTAL_PECAS = 500;
 
     public Cliente(int id, FixedBuffer<Veiculo> garage, CircularBuffer<Veiculo> estoqueLoja) {
         this.id = id;
@@ -247,11 +239,25 @@ class Cliente implements Runnable{
             while (!Thread.currentThread().isInterrupted()) {
                 Veiculo veiculo = estoqueLoja.consume();
                 garage.add(veiculo);
-
-                System.out.printf("Cliente %d comprou veículo %d da loja %d%n",
-                        id, veiculo.getIdCarro(), veiculo.getIdLoja());
-
-                Thread.sleep(1000); // Tempo entre compras
+                System.out.printf(
+                        "O cliente [%d] " +
+                                "comprou o carro de numero [%d] " +
+                                "armazenado na posição [%d] do estoque " +
+                                "da loja número [%d] " +
+                                "que foi pego da posição [%d] do buffer de produção " +
+                                "e fabricado pelo funcionario [%d] " +
+                                "da mesa [%d] " +
+                                "que usou a peça [%d] do buffer de peças%n%n",
+                        id,
+                        veiculo.getIdCarro(),
+                        veiculo.getPosiLoja(),
+                        veiculo.getIdLoja(),
+                        veiculo.getPosInicial(),
+                        veiculo.getIdFuncionario(),
+                        veiculo.getIdMesa(),
+                        (veiculo.getIdCarro() % TOTAL_PECAS) + 1  
+                );
+                Thread.sleep(1000);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -259,7 +265,6 @@ class Cliente implements Runnable{
     }
 }
 //    ==================================================================================================================
-
 class Veiculo {
     private static int nextId = 1;
 
@@ -328,4 +333,3 @@ class Veiculo {
         this.posiLoja = posiLoja;
     }
 }
-//    ==================================================================================================================
