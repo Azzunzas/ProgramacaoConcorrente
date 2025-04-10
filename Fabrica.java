@@ -66,7 +66,7 @@ public class Fabrica {
     }
     private static void initializePecasBuffer(FixedBuffer<Integer>buffer,int count){
         try{
-            for(int i= 0; i <= count; i++){
+            for(int i= 1; i <= count; i++){
                 buffer.add(i);
             }
         }catch (InterruptedException e){
@@ -162,37 +162,41 @@ class FixedBuffer<T> {
     }
 }
 //    ==================================================================================================================
-class Funcionario implements Runnable{
-    private final CircularBuffer producao;
-    private final FixedBuffer pecas;
-    private final int id;
+class Funcionario implements Runnable {
+    private final CircularBuffer<Veiculo> bufferProducao;
+    private final FixedBuffer<Integer> bufferPecas;
     private final int idMesa;
+    private final int id;
 
-    public Funcionario(CircularBuffer producao, FixedBuffer pecas, int idMesa, int id) {
-        this.producao = producao;
-        this.pecas = pecas;
-        this.id = id;
+    public Funcionario(CircularBuffer<Veiculo> bufferProducao,
+                       FixedBuffer<Integer> bufferPecas,
+                       int idMesa, int id) {
+        this.bufferProducao = bufferProducao;
+        this.bufferPecas = bufferPecas;
         this.idMesa = idMesa;
+        this.id = id;
     }
 
     @Override
     public void run() {
         try {
-            for(int i = 0; i < numItems; i++){//minha ideia era que com base no tamnho atual do pecas, ele consumise uma peça n e passase o indice para o funcionario produzir o seu carro com essa peça.
-                int item = pecas.consume();
-                Thread.sleep((long)(500 + Math.random()));
-                System.out.println("\t" + Thread.currentThread().getName() + "pegou a peca: "+ item);
+            while (!Thread.currentThread().isInterrupted()) {
+                // 1. Pegar peças (2 peças por veículo)
+                int peca1 = bufferPecas.remove();
+                int peca2 = bufferPecas.remove();
+
+                // 2. Produzir veículo
+                Veiculo veiculo = new Veiculo(idMesa, id, bufferProducao.size());
+                Thread.sleep(500); // Simula tempo de produção
+
+                // 3. Colocar na esteira de produção
+                bufferProducao.produce(veiculo);
+
+//                System.out.printf("[FABRICA] Produção - ID: %d | Cor: %s | Tipo: %s | Mesa: %d | Funcionário: %d | Posição Esteira: %d%n",
+//                        veiculo.getIdCarro(), veiculo.getColor(), veiculo.getTypo(),
+//                        idMesa, id, bufferProducao.size());
             }
-        }catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-        }
-        try{
-            for (int i = 0; i< numItems; i++){
-                producao.produce(i);
-                Thread.sleep((long)(500 + Math.random()));
-                System.out.println("\t" + Thread.currentThread().getName() + "produziu: " + i);
-            }
-        }catch (InterruptedException e){
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
@@ -200,9 +204,9 @@ class Funcionario implements Runnable{
 //    ==============================================================================================================
 class Loja implements Runnable{
     private final int idLoja;
-    private final CircularBuffer producao, estoqueLoja;
+    private final CircularBuffer<Veiculo> producao, estoqueLoja;
 
-    public Loja(int idLoja, CircularBuffer producao, CircularBuffer estoqueLoja) {
+    public Loja(int idLoja, CircularBuffer<Veiculo> producao, CircularBuffer<Veiculo> estoqueLoja) {
         this.idLoja = idLoja;
         this.producao = producao;
         this.estoqueLoja = estoqueLoja;
@@ -210,16 +214,28 @@ class Loja implements Runnable{
 
     @Override
     public void run() {
+        try{
+            while(!Thread.currentThread().isInterrupted()){
+                Veiculo veiculo = producao.consume();
+                veiculo.setIdLoja(idLoja);
+                veiculo.setPosiLoja(estoqueLoja.size());
 
+                estoqueLoja.produce(veiculo);
+//                System.out.printf("[VENDA FABRICA] ID: %d | Loja: %d | Posição Loja: %d%n",
+//                        veiculo.getIdCarro(), idLoja, estoqueLoja.size());
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
 //    ==================================================================================================================
 class Cliente implements Runnable{
     private final int id;
-    private final FixedBuffer garage;
-    private final CircularBuffer estoqueLoja;
+    private final FixedBuffer<Veiculo> garage;
+    private final CircularBuffer<Veiculo> estoqueLoja;
 
-    public Cliente(int id, FixedBuffer garage, CircularBuffer estoqueLoja) {
+    public Cliente(int id, FixedBuffer<Veiculo> garage, CircularBuffer<Veiculo> estoqueLoja) {
         this.id = id;
         this.garage = garage;
         this.estoqueLoja = estoqueLoja;
@@ -227,31 +243,50 @@ class Cliente implements Runnable{
 
     @Override
     public void run() {
+        try {
+            while (!Thread.currentThread().isInterrupted()) {
+                Veiculo veiculo = estoqueLoja.consume();
+                garage.add(veiculo);
 
+                System.out.printf("Cliente %d comprou veículo %d da loja %d%n",
+                        id, veiculo.getIdCarro(), veiculo.getIdLoja());
+
+                Thread.sleep(1000); // Tempo entre compras
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
 //    ==================================================================================================================
 
 class Veiculo {
+    private static int nextId = 1;
+
     private final int idCarro;
     private final String color;
     private final String typo;
     private final int idMesa;
-
     private final int idFuncionario;
     private final int posInicial;
-
     private Integer idLoja;
-
     private Integer posiLoja;
 
-    public veiculo(int idCarro, String color, String typo, int idMesa, int idFuncionario, int posInicial) {
-        this.idCarro = idCarro;
-        this.color = color;
-        this.typo = typo;
+    public Veiculo(int idMesa, int idFuncionario, int posInicial) {
+        this.idCarro = nextId++;
+        this.color = alternarCor();
+        this.typo = alternarTipo();
         this.idMesa = idMesa;
         this.idFuncionario = idFuncionario;
         this.posInicial = posInicial;
+    }
+
+    public String alternarCor(){
+        String[] cores = {"Vermelho", "Verde", "Azul"};
+        return cores [(idCarro - 1) % cores.length];
+    }
+    private String alternarTipo(){
+        return (idCarro % 2 == 0) ? "SUV" : "SEDAN";
     }
 
     public int getIdCarro() {
