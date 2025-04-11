@@ -5,11 +5,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 
-
 public class Fabrica {
 
     private static final int BUFFER_PECAS = 500;
-    private static final int BUFFER_GARAGEM = 25;
+    private static final int BUFFER_GARAGEM = 500;
 
     private static final int BUFFER_PROD = 40;
     private static final int BUFFER_LOJA = 40;
@@ -29,18 +28,25 @@ public class Fabrica {
         CircularBuffer<Veiculo> bufferProd = new CircularBuffer<>(BUFFER_PROD);
         CircularBuffer<Veiculo> bufferLoja = new CircularBuffer<>(BUFFER_LOJA);
 
+        Ferramenta[] ferramentasPorMesa = new Ferramenta[MESAS];
+
+        for (int i = 0; i < MESAS; i++){
+            ferramentasPorMesa[i] = new Ferramenta(FUNCIONARIOS);
+        }
 
         ExecutorService executor = Executors.newFixedThreadPool((FUNCIONARIOS * MESAS) + LOJAS + CLIENTES);
 
         for (int i = 1; i <=  MESAS; i++) {
             int mesa = i;
+            Ferramenta ferramenta = ferramentasPorMesa[mesa-1];
             for (int j = 1; j<= FUNCIONARIOS;j++) {
                 int idFuncionario = j;
                 executor.execute(new Funcionario(
                         bufferProd,
                         bufferPecas,
                         mesa,
-                        idFuncionario
+                        idFuncionario,
+                        ferramenta
                 ));
             }
         }
@@ -69,13 +75,12 @@ public class Fabrica {
             }
         }catch (InterruptedException e){
             Thread.currentThread().interrupt();
-            System.out.println("Erro ao inicializar buffer de peças! ");
+            System.out.println("Erro ao inicializar o buffer de peças! ");
         }
     }
 }
-//    ==================================================================================================================
 class CircularBuffer<T> {
-    private final T[] buffer;
+    private T[] buffer;
     private int head, tail = 0;
     private final Semaphore empty;
     private final Semaphore full;
@@ -118,10 +123,8 @@ class CircularBuffer<T> {
         return full.availablePermits();
     }
 }
-
-//    ============================================   ============================================
 class FixedBuffer<T> {
-    private final Queue<T> buffer = new LinkedList<>();
+    private  Queue<T> buffer = new LinkedList<>();
     private final Semaphore empty;
     private final Semaphore full = new Semaphore(0);
     private final Semaphore mutex = new Semaphore(1);
@@ -159,20 +162,21 @@ class FixedBuffer<T> {
         return full.availablePermits();
     }
 }
-//    ==================================================================================================================
 class Funcionario implements Runnable {
     private final CircularBuffer<Veiculo> bufferProducao;
     private final FixedBuffer<Integer> bufferPecas;
     private final int idMesa;
     private final int id;
+    private final Ferramenta ferramenta;
 
     public Funcionario(CircularBuffer<Veiculo> bufferProducao,
                        FixedBuffer<Integer> bufferPecas,
-                       int idMesa, int id) {
+                       int idMesa, int id, Ferramenta ferramenta) {
         this.bufferProducao = bufferProducao;
         this.bufferPecas = bufferPecas;
         this.idMesa = idMesa;
         this.id = id;
+        this.ferramenta = ferramenta;
     }
 
     @Override
@@ -180,12 +184,13 @@ class Funcionario implements Runnable {
         try {
             while (!Thread.currentThread().isInterrupted()) {
 
+                ferramenta.pegar(id-1);
+
                 int peca1 = bufferPecas.remove();
-                int peca2 = bufferPecas.remove();
 
                 Veiculo veiculo = new Veiculo(idMesa, id, bufferProducao.size());
-                Thread.sleep(500);
-
+                Thread.sleep(2000);
+                ferramenta.soltar(id-1);
                 bufferProducao.produce(veiculo);
 
             }
@@ -194,7 +199,39 @@ class Funcionario implements Runnable {
         }
     }
 }
-//    ==============================================================================================================
+class Ferramenta {
+
+    private final Semaphore[] ferramentas;
+
+    public Ferramenta(int numFuncionarios){
+        ferramentas = new Semaphore[numFuncionarios];
+        for ( int i = 0; i < numFuncionarios; i++){
+            ferramentas[i] = new Semaphore(1);
+        }
+    }
+
+    public void pegar(int idFuncionario) throws InterruptedException {
+        int ferramentaEsquerda = idFuncionario;
+        int ferramentaDireita = (idFuncionario + 1) % ferramentas.length;
+
+        if(ferramentaEsquerda < ferramentaDireita){
+            ferramentas[ferramentaEsquerda].acquire();
+            ferramentas[ferramentaDireita].acquire();
+        }else {
+            ferramentas[ferramentaDireita].acquire();
+            ferramentas[ferramentaEsquerda].acquire();
+        }
+    }
+
+    public void soltar(int idFuncionario){
+        int ferramentaEsquerda = idFuncionario;
+        int ferramentaDireita = (idFuncionario + 1) % ferramentas.length;
+
+        ferramentas[ferramentaEsquerda].release();
+        ferramentas[ferramentaDireita].release();
+    }
+}
+
 class Loja implements Runnable{
     private final int idLoja;
     private final CircularBuffer<Veiculo> producao, estoqueLoja;
@@ -220,10 +257,10 @@ class Loja implements Runnable{
         }
     }
 }
-//    ==================================================================================================================
 class Cliente implements Runnable{
     private final int id;
     private final FixedBuffer<Veiculo> garage;
+
     private final CircularBuffer<Veiculo> estoqueLoja;
     private static final int TOTAL_PECAS = 500;
 
@@ -231,6 +268,7 @@ class Cliente implements Runnable{
         this.id = id;
         this.garage = garage;
         this.estoqueLoja = estoqueLoja;
+
     }
 
     @Override
@@ -242,6 +280,8 @@ class Cliente implements Runnable{
                 System.out.printf(
                         "O cliente [%d] " +
                                 "comprou o carro de numero [%d] " +
+                                "cor [%s] " +
+                                "modelo [%s] " +
                                 "armazenado na posição [%d] do estoque " +
                                 "da loja número [%d] " +
                                 "que foi pego da posição [%d] do buffer de produção " +
@@ -249,22 +289,24 @@ class Cliente implements Runnable{
                                 "da mesa [%d] " +
                                 "que usou a peça [%d] do buffer de peças%n%n",
                         id,
-                        veiculo.getIdCarro(),
+                        veiculo.getIdCarro() + 1,
+                        veiculo.getColor(),
+                        veiculo.getTypo(),
                         veiculo.getPosiLoja(),
                         veiculo.getIdLoja(),
                         veiculo.getPosInicial(),
                         veiculo.getIdFuncionario(),
                         veiculo.getIdMesa(),
-                        (veiculo.getIdCarro() % TOTAL_PECAS) + 1  
+                        (veiculo.getIdCarro() % TOTAL_PECAS) + 1
                 );
                 Thread.sleep(1000);
             }
+            System.out.println(garage);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 }
-//    ==================================================================================================================
 class Veiculo {
     private static int nextId = 1;
 
