@@ -1,6 +1,8 @@
 
+import java.sql.SQLOutput;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -8,7 +10,7 @@ import java.util.concurrent.Semaphore;
 public class Fabrica {
 
     private static final int BUFFER_PECAS = 500;
-    private static final int BUFFER_GARAGEM = 500;
+    private static final int BUFFER_GARAGEM = 25;
 
     private static final int BUFFER_PROD = 40;
     private static final int BUFFER_LOJA = 40;
@@ -24,9 +26,16 @@ public class Fabrica {
         FixedBuffer<Integer> bufferPecas = new FixedBuffer<>(BUFFER_PECAS);
         initializePecasBuffer(bufferPecas, BUFFER_PECAS);
 
-        FixedBuffer<Veiculo> bufferGarage = new FixedBuffer<>(BUFFER_GARAGEM);
+        FixedBuffer<Veiculo>[] bufferGarage = new FixedBuffer[BUFFER_GARAGEM];
+        for (int i = 0; i < CLIENTES; i++) {
+            bufferGarage[i] = new FixedBuffer<>(BUFFER_GARAGEM);
+        }
+
         CircularBuffer<Veiculo> bufferProd = new CircularBuffer<>(BUFFER_PROD);
-        CircularBuffer<Veiculo> bufferLoja = new CircularBuffer<>(BUFFER_LOJA);
+        CircularBuffer<Veiculo>[] bufferLoja = new CircularBuffer[LOJAS];
+        for (int i = 0; i < LOJAS; i++) {
+            bufferLoja[i]= new CircularBuffer<>(BUFFER_LOJA);
+        }
 
         Ferramenta[] ferramentasPorMesa = new Ferramenta[MESAS];
 
@@ -50,19 +59,19 @@ public class Fabrica {
                 ));
             }
         }
-        for(int i = 0; i < LOJAS; i++){
-            int idLoja = i +1;
-            executor.execute(new Loja(
-                    idLoja,
-                    bufferProd,
-                    bufferLoja
-            ));
-        }
-        for(int i= 0; i < CLIENTES;i++){
-            int idCliente =i +1;
+            for(int i = 0; i < LOJAS; i++){
+                int idLoja = i ;
+                executor.execute(new Loja(
+                        idLoja,
+                        bufferProd,
+                        bufferLoja[i]
+                ));
+            }
+        for(int i = 0; i < CLIENTES;i++){
+            int idCliente = i;
             executor.execute(new Cliente(
                     idCliente,
-                    bufferGarage,
+                    bufferGarage[i],
                     bufferLoja
             ));
         }
@@ -261,13 +270,14 @@ class Cliente implements Runnable{
     private final int id;
     private final FixedBuffer<Veiculo> garage;
 
-    private final CircularBuffer<Veiculo> estoqueLoja;
+    private final CircularBuffer<Veiculo>[] buffersLojas;
     private static final int TOTAL_PECAS = 500;
+    private final Random random = new Random();
 
-    public Cliente(int id, FixedBuffer<Veiculo> garage, CircularBuffer<Veiculo> estoqueLoja) {
+    public Cliente(int id, FixedBuffer<Veiculo> garage, CircularBuffer<Veiculo>[] buffersLojas) {
         this.id = id;
         this.garage = garage;
-        this.estoqueLoja = estoqueLoja;
+        this.buffersLojas = buffersLojas;
 
     }
 
@@ -275,7 +285,9 @@ class Cliente implements Runnable{
     public void run() {
         try {
             while (!Thread.currentThread().isInterrupted()) {
-                Veiculo veiculo = estoqueLoja.consume();
+                int escolha = random.nextInt(buffersLojas.length);
+                CircularBuffer<Veiculo> lojaEscolhida = buffersLojas[escolha];
+                Veiculo veiculo = lojaEscolhida.consume();
                 garage.add(veiculo);
                 System.out.printf(
                         "O cliente [%d] " +
@@ -301,7 +313,6 @@ class Cliente implements Runnable{
                 );
                 Thread.sleep(1000);
             }
-            System.out.println(garage);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
@@ -375,3 +386,10 @@ class Veiculo {
         this.posiLoja = posiLoja;
     }
 }
+
+
+//ainda falta.
+//limite de coleta de pecas por vez.
+//arrumar garagem do cliente e talvez lojas.
+//socket
+
