@@ -8,7 +8,7 @@ public class Contador2 {
     }
 
     public static void main(String[] args) {
-        Contador contador = new Contador();
+        Contador2 contador = new Contador2();
 
         // Criando várias threads que compartilham o mesmo contador
         for (int i = 0; i < 5; i++) {
